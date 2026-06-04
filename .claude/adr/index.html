@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Django チュートリアル Q&A ログ</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', sans-serif;
+      background: #f5f7fa;
+      color: #333;
+      line-height: 1.6;
+    }
+
+    header {
+      background: #0c4a6e;
+      color: #fff;
+      padding: 24px 32px;
+    }
+    header h1 { font-size: 1.5rem; font-weight: 700; }
+    header p  { font-size: 0.875rem; opacity: 0.75; margin-top: 4px; }
+
+    main { max-width: 960px; margin: 32px auto; padding: 0 16px; }
+
+    /* Stats */
+    .stats {
+      display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 28px;
+    }
+    .stat-card {
+      background: #fff; border-radius: 8px;
+      padding: 16px 24px; flex: 1; min-width: 140px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+      text-align: center;
+    }
+    .stat-card .value { font-size: 2rem; font-weight: 700; color: #0c4a6e; }
+    .stat-card .label { font-size: 0.8rem; color: #666; margin-top: 4px; }
+
+    /* Alert: duplicates */
+    .alert {
+      background: #fff7ed; border-left: 4px solid #f97316;
+      border-radius: 6px; padding: 16px 20px; margin-bottom: 28px;
+    }
+    .alert h2 { font-size: 1rem; color: #c2410c; margin-bottom: 10px; }
+    .alert table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    .alert table th, .alert table td {
+      text-align: left; padding: 6px 10px; border-bottom: 1px solid #fed7aa;
+    }
+    .alert table th { color: #9a3412; font-weight: 600; }
+    .alert.hidden { display: none; }
+
+    /* Filters */
+    .toolbar {
+      display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .toolbar input[type="search"] {
+      flex: 1; min-width: 200px;
+      padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px;
+      font-size: 0.875rem;
+    }
+    .toolbar select {
+      padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px;
+      font-size: 0.875rem; background: #fff;
+    }
+
+    /* Table */
+    .table-wrap { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow: auto; }
+    table.qa { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    table.qa thead { background: #f1f5f9; }
+    table.qa th { padding: 10px 16px; text-align: left; font-weight: 600; color: #475569; }
+    table.qa td { padding: 10px 16px; border-top: 1px solid #e2e8f0; vertical-align: top; }
+    table.qa tbody tr:hover { background: #f8fafc; }
+    table.qa td.title { font-weight: 500; }
+    table.qa td.title a { color: #0c4a6e; text-decoration: none; }
+    table.qa td.title a:hover { text-decoration: underline; }
+
+    .badge {
+      display: inline-block; font-size: 0.7rem; padding: 2px 8px;
+      border-radius: 999px; font-weight: 600;
+    }
+    .badge-solved   { background: #dcfce7; color: #166534; }
+    .badge-open     { background: #fef9c3; color: #854d0e; }
+    .badge-dup      { background: #fee2e2; color: #991b1b; }
+
+    .part-tag {
+      display: inline-block; font-size: 0.7rem; padding: 2px 6px;
+      border-radius: 4px; background: #e0f2fe; color: #0369a1;
+    }
+
+    .empty { text-align: center; color: #94a3b8; padding: 40px; font-size: 0.9rem; }
+
+    footer { text-align: center; font-size: 0.8rem; color: #94a3b8; padding: 32px 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Django チュートリアル Q&amp;A ログ</h1>
+  <p>チュートリアル学習中に発生した質問と回答の一覧</p>
+</header>
+
+<main>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card"><div class="value" id="total">0</div><div class="label">総質問数</div></div>
+    <div class="stat-card"><div class="value" id="solved">0</div><div class="label">解決済み</div></div>
+    <div class="stat-card"><div class="value" id="dupCount">0</div><div class="label">重複（要復習）</div></div>
+  </div>
+
+  <!-- Duplicate alert -->
+  <div class="alert hidden" id="dupAlert">
+    <h2>⚠ 特記事項 — 重複した質問（要復習）</h2>
+    <table>
+      <thead><tr><th>質問</th><th>回数</th><th>関連ファイル</th></tr></thead>
+      <tbody id="dupBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Filters -->
+  <div class="toolbar">
+    <input type="search" id="searchInput" placeholder="キーワードで絞り込み..." />
+    <select id="partFilter"><option value="">すべての箇所</option></select>
+    <select id="statusFilter">
+      <option value="">すべてのステータス</option>
+      <option value="解決済み">解決済み</option>
+      <option value="未解決">未解決</option>
+    </select>
+  </div>
+
+  <!-- Q&A Table -->
+  <div class="table-wrap">
+    <table class="qa">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>日付</th>
+          <th>チュートリアル箇所</th>
+          <th>質問</th>
+          <th>ステータス</th>
+        </tr>
+      </thead>
+      <tbody id="qaBody"></tbody>
+    </table>
+    <div class="empty hidden" id="emptyMsg">該当する質問が見つかりません</div>
+  </div>
+
+</main>
+
+<footer>最終更新: <span id="lastUpdated">—</span></footer>
+
+<script>
+  // =====================================================================
+  // データ定義
+  // Claude が ADR ファイルを作成するたびにここを更新する
+  // =====================================================================
+  const QA_DATA = [
+    // 例（実際の質問が入ったら削除してください）
+    // {
+    //   id: "20260525-001",
+    //   date: "2026-05-25",
+    //   part: "Part 1",
+    //   title: "マイグレーションとは何か",
+    //   status: "解決済み",
+    //   file: "20260525-001-マイグレーションとは何か.md",
+    //   duplicate: false
+    // },
+  ];
+
+  // 重複質問リスト
+  const DUPLICATES = [
+    // {
+    //   title: "マイグレーションとモデルの関係",
+    //   count: 2,
+    //   files: ["20260525-001-...", "20260601-010-..."]
+    // }
+  ];
+  // =====================================================================
+
+  function render(data) {
+    const tbody = document.getElementById('qaBody');
+    const empty = document.getElementById('emptyMsg');
+    tbody.innerHTML = '';
+
+    if (data.length === 0) {
+      empty.classList.remove('hidden');
+      return;
+    }
+    empty.classList.add('hidden');
+
+    data.forEach((q, i) => {
+      const tr = document.createElement('tr');
+      const statusClass = q.status === '解決済み' ? 'badge-solved'
+                        : q.duplicate ? 'badge-dup' : 'badge-open';
+      const statusLabel = q.status || '未解決';
+      tr.innerHTML = `
+        <td>${i + 1}</td>
+        <td>${q.date}</td>
+        <td>${q.part ? `<span class="part-tag">${q.part}</span>` : '—'}</td>
+        <td class="title">
+          ${q.file
+            ? `<a href="${q.file}" target="_blank">${q.title}</a>`
+            : q.title}
+          ${q.duplicate ? ' <span class="badge badge-dup">重複</span>' : ''}
+        </td>
+        <td><span class="badge ${statusClass}">${statusLabel}</span></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function buildFilters() {
+    const parts = [...new Set(QA_DATA.map(q => q.part).filter(Boolean))];
+    const sel = document.getElementById('partFilter');
+    parts.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p; opt.textContent = p;
+      sel.appendChild(opt);
+    });
+  }
+
+  function applyFilters() {
+    const kw     = document.getElementById('searchInput').value.toLowerCase();
+    const part   = document.getElementById('partFilter').value;
+    const status = document.getElementById('statusFilter').value;
+
+    const filtered = QA_DATA.filter(q => {
+      const matchKw     = !kw     || q.title.toLowerCase().includes(kw);
+      const matchPart   = !part   || q.part === part;
+      const matchStatus = !status || (q.status || '未解決') === status;
+      return matchKw && matchPart && matchStatus;
+    });
+    render(filtered);
+  }
+
+  function initStats() {
+    document.getElementById('total').textContent  = QA_DATA.length;
+    document.getElementById('solved').textContent = QA_DATA.filter(q => q.status === '解決済み').length;
+    document.getElementById('dupCount').textContent = DUPLICATES.length;
+
+    if (DUPLICATES.length > 0) {
+      document.getElementById('dupAlert').classList.remove('hidden');
+      const tbody = document.getElementById('dupBody');
+      DUPLICATES.forEach(d => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${d.title}</td><td>${d.count}回</td><td>${d.files.join(', ')}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    const dates = QA_DATA.map(q => q.date).filter(Boolean).sort();
+    document.getElementById('lastUpdated').textContent = dates[dates.length - 1] || '—';
+  }
+
+  document.getElementById('searchInput').addEventListener('input', applyFilters);
+  document.getElementById('partFilter').addEventListener('change', applyFilters);
+  document.getElementById('statusFilter').addEventListener('change', applyFilters);
+
+  buildFilters();
+  initStats();
+  render(QA_DATA);
+</script>
+
+</body>
+</html>
