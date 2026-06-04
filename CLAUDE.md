@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## このファイルのルール
+
+- **最大500行**を上限とする。超える場合は内容を整理・削除する
+- 特定のディレクトリやファイルに限定される内容は記載しない。該当ディレクトリ配下に独自の `CLAUDE.md` を置くこと
+
 ## 目的
 
 2026年度の目標として、[Django公式チュートリアル（日本語版）](https://docs.djangoproject.com/ja/6.0/intro) を順番に完了する。
